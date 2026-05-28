@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analizador de Riesgo de Portafolio</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg2: #f5f5f4;
+    --bg3: #eeece8;
+    --text: #1a1a18;
+    --text2: #6b6b67;
+    --text3: #9b9b97;
+    --border: rgba(0,0,0,0.1);
+    --border2: rgba(0,0,0,0.18);
+    --radius: 8px;
+    --radius-lg: 12px;
+    --up: #1D9E75;
+    --dn: #D85A30;
+    --accent: #378ADD;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1e1c;
+      --bg2: #2a2a27;
+      --bg3: #333330;
+      --text: #f0ede8;
+      --text2: #a0a09a;
+      --text3: #707068;
+      --border: rgba(255,255,255,0.1);
+      --border2: rgba(255,255,255,0.18);
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg3); color: var(--text); min-height: 100vh; }
+  
+  /* HEADER */
+  .header { background: var(--bg); border-bottom: 0.5px solid var(--border2); padding: 1rem 1.5rem; display: flex; align-items: center; justify-content: space-between; }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .logo { width: 36px; height: 36px; background: var(--accent); border-radius: var(--radius); display: flex; align-items: center; justify-content: center; }
+  .logo svg { width: 20px; height: 20px; fill: white; }
+  .header h1 { font-size: 16px; font-weight: 600; color: var(--text); }
+  .header p { font-size: 12px; color: var(--text2); }
+  .api-badge { font-size: 11px; padding: 4px 10px; border-radius: 20px; background: var(--bg2); border: 0.5px solid var(--border2); color: var(--text2); display: flex; align-items: center; gap: 6px; }
+
+
+  /* LAYOUT */
+  .container { max-width: 1280px; margin: 0 auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+  .editor-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+  @media (max-width: 900px) { .editor-row { grid-template-columns: 1fr; } }
+
+  /* CARDS */
+  .card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; }
+  .card-title { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 1rem; }
+
+  /* METRICS */
+  .metrics-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 1rem; }
+  .metric { background: var(--bg2); border-radius: var(--radius); padding: .9rem; }
+  .metric-lbl { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+  .metric-val { font-size: 22px; font-weight: 600; }
+  .metric-sub { font-size: 11px; margin-top: 2px; color: var(--text2); }
+  .up { color: var(--up); } .dn { color: var(--dn); }
+
+  /* TABS */
+  .tabs { display: flex; gap: 2px; margin-bottom: 1rem; background: var(--bg2); padding: 3px; border-radius: var(--radius); }
+  .tab { flex: 1; padding: 7px 10px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; background: none; color: var(--text2); border-radius: 6px; transition: all .15s; }
+  .tab.active { background: var(--bg); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .tab:hover:not(.active) { color: var(--text); }
+
+  /* TABLE */
+  .tbl-wrap { overflow-x: auto; width: 100%; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { font-size: 10px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .05em; padding: 7px 8px; border-bottom: 0.5px solid var(--border2); text-align: left; white-space: nowrap; }
+  td { padding: 9px 8px; border-bottom: 0.5px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  td input, td select { width: 100%; font-size: 12px; padding: 4px 6px; height: 28px; border: 0.5px solid var(--border2); border-radius: 4px; background: var(--bg2); color: var(--text); outline: none; }
+  td input:focus, td select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(55,138,221,.2); }
+
+  /* FORM */
+  .form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 11px; font-weight: 500; color: var(--text2); }
+  .form-group input, .form-group select { padding: 8px 10px; border: 0.5px solid var(--border2); border-radius: var(--radius); background: var(--bg2); color: var(--text); font-size: 13px; outline: none; transition: border-color .15s; }
+  .form-group input:focus, .form-group select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(55,138,221,.2); }
+
+  /* BUTTONS */
+  .btn { padding: 8px 16px; border: 0.5px solid var(--border2); border-radius: var(--radius); background: var(--bg); color: var(--text); font-size: 13px; cursor: pointer; transition: background .15s, transform .1s; }
+  .btn:hover { background: var(--bg2); }
+  .btn:active { transform: scale(.98); }
+  .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .btn-primary:hover { background: #2670c0; }
+  .btn-danger { color: var(--dn); }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-icon { padding: 5px; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; }
+  .btns-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 1rem; align-items: center; }
+  .presets-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  
+  /* BADGES */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .b-low { background: #EAF3DE; color: #3B6D11; }
+  .b-med { background: #FAEEDA; color: #854F0B; }
+  .b-high { background: #FAECE7; color: #993C1D; }
+
+  /* WEIGHT BAR */
+  .wbar-wrap { width: 60px; height: 5px; background: var(--bg3); border-radius: 3px; display: inline-block; vertical-align: middle; margin-right: 4px; }
+  .wbar { height: 100%; border-radius: 3px; }
+
+  /* ALERTS */
+  .alert { padding: .6rem .9rem; border-radius: var(--radius); font-size: 12px; margin-bottom: .75rem; }
+  .alert-warn { background: #FAEEDA; color: #854F0B; border: 0.5px solid #EF9F27; }
+  .alert-err { background: #FAECE7; color: #993C1D; border: 0.5px solid #D85A30; }
+  .alert-ok { background: #EAF3DE; color: #3B6D11; border: 0.5px solid #97C459; }
+
+  /* CHARTS */
+  .chart-wrap { position: relative; }
+
+  /* AI AREA */
+  .ai-response { font-size: 13px; line-height: 1.8; color: var(--text); white-space: pre-wrap; }
+  .ai-loading { display: flex; align-items: center; gap: 10px; padding: .75rem 0; color: var(--text2); font-size: 13px; }
+  .spinner { width: 18px; height: 18px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* TOTAL BAR */
+  .total-bar { display: flex; justify-content: space-between; align-items: center; padding: .75rem 1rem; background: var(--bg2); border-radius: var(--radius); margin-bottom: 1rem; }
+  .total-bar label { font-size: 12px; color: var(--text2); }
+  .total-bar .total-input-wrap { display: flex; align-items: center; gap: 6px; }
+  .total-bar input { width: 130px; font-size: 15px; font-weight: 600; text-align: right; padding: 5px 8px; border: 0.5px solid var(--border2); border-radius: var(--radius); background: var(--bg); color: var(--text); outline: none; }
+  .total-bar input:focus { border-color: var(--accent); }
+
+  /* EMPTY STATE */
+  .empty { text-align: center; padding: 2.5rem 1rem; color: var(--text2); }
+  .empty-icon { font-size: 32px; margin-bottom: .5rem; }
+
+  /* LEGEND */
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: .75rem; font-size: 11px; color: var(--text2); }
+  .legend-dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+
+  /* API KEY */
+
+  /* SCENARIO SLIDERS */
+  .slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .slider-lbl { font-size: 12px; color: var(--text2); min-width: 120px; }
+  .slider-val { font-size: 12px; font-weight: 600; color: var(--text); min-width: 60px; text-align: right; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .stress-result { margin-top: 1rem; padding: 1rem; background: var(--bg2); border-radius: var(--radius); }
+  .stress-breakdown { display: grid; gap: 8px; margin-top: .75rem; font-size: 12px; }
+
+  /* CORR MATRIX */
+  #corr-matrix { overflow-x: auto; }
+  .corr-grid { display: inline-grid; gap: 2px; }
+  .corr-cell { height: 40px; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; min-width: 48px; }
+
+  hr { border: none; border-top: 0.5px solid var(--border); margin: 1rem 0; }
+  .gap-sm { height: 8px; }
+  .gap { height: 1rem; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo">
+      <svg viewBox="0 0 24 24"><path d="M3 3h18v2H3V3zm0 4h12v2H3V7zm0 4h18v2H3v-2zm0 4h12v2H3v-2zm0 4h18v2H3v-2z"/></svg>
+    </div>
+    <div>
+      <h1>Analizador de Riesgo de Portafolio</h1>
+      <p>POC — Gestión y análisis de riesgo financiero</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="container">
+
+  <!-- TOP ROW: EDITOR -->
+  <div class="editor-row">
+    <!-- LEFT: ADD FORM -->
+    <div>
+      <div class="card">
+        <div class="card-title">Editor de portafolio</div>
+
+        <div class="total-bar">
+          <label>Valor total del portafolio</label>
+          <div class="total-input-wrap">
+            <span style="font-size:14px;color:var(--text2)">$</span>
+            <input id="total-input" type="number" value="100000" min="1" step="1000" oninput="recalc()">
+            <span style="font-size:12px;color:var(--text2)">USD</span>
+          </div>
+        </div>
+
+        <div id="weight-alert" style="display:none"></div>
+
+        <!-- ADD FORM -->
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Ticker</label>
+            <input id="in-ticker" placeholder="ej. MSFT" style="text-transform:uppercase">
+          </div>
+          <div class="form-group">
+            <label>Nombre</label>
+            <input id="in-name" placeholder="Nombre del activo">
+          </div>
+          <div class="form-group">
+            <label>Clase de activo</label>
+            <select id="in-class">
+              <option>Acciones</option><option>ETF</option><option>Cripto</option>
+              <option>Renta Fija</option><option>Commodities</option><option>FX</option><option>Otro</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Peso (%)</label>
+            <input id="in-weight" type="number" placeholder="ej. 25" min="0" max="100" step="0.1">
+          </div>
+          <div class="form-group">
+            <label>Retorno YTD (%)</label>
+            <input id="in-ytd" type="number" placeholder="ej. 12.5" step="0.1">
+          </div>
+          <div class="form-group">
+            <label>Volatilidad anual (%)</label>
+            <input id="in-vol" type="number" placeholder="ej. 18.4" min="0" step="0.1">
+          </div>
+        </div>
+
+        <div class="btns-row">
+          <button class="btn btn-primary" onclick="addAsset()">+ Agregar activo</button>
+          <button class="btn btn-sm btn-danger" onclick="clearAll()">🗑 Limpiar</button>
+        </div>
+
+        <hr>
+        <div class="card-title" style="margin-bottom:.5rem">Cargar preset</div>
+        <div class="presets-row">
+          <button class="btn btn-sm" onclick="loadPreset('conservador')" title="Bonos + Oro + S&P500 — capital preservation">🛡 Conservador</button>
+          <button class="btn btn-sm" onclick="loadPreset('moderado')" title="Mix balanceado con algo de cripto">⚖️ Moderado</button>
+          <button class="btn btn-sm" onclick="loadPreset('tecnologia_ia')" title="NVDA, MSFT, META, GOOGL, PLTR — boom IA">🤖 Tecnología IA</button>
+          <button class="btn btn-sm" onclick="loadPreset('cripto')" title="BTC, ETH, SOL, BNB, AVAX, LINK">₿ Cripto</button>
+          <button class="btn btn-sm" onclick="loadPreset('macro_global')" title="Oro, plata, petróleo, mercados emergentes">🌍 Macro Global</button>
+          <button class="btn btn-sm" onclick="loadPreset('especulativo')" title="TSLA, MSTR, DOGE — máximo riesgo/retorno">🎲 Especulativo</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: COMPOSITION TABLE -->
+    <div>
+      <div class="card" style="height:100%">
+        <div class="card-title">Activos del portafolio</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Ticker</th>
+                <th>Nombre</th>
+                <th>Clase</th>
+                <th>Peso%</th>
+                <th>YTD%</th>
+                <th>Vol%</th>
+                <th>Riesgo</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="assets-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div><!-- /editor-row -->
+
+  <!-- BOTTOM: ANALYSIS FULL WIDTH -->
+  <div>
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('resumen')">Resumen</button>
+        <button class="tab" onclick="switchTab('stress')">Escenarios</button>
+        <button class="tab" onclick="switchTab('correlacion')">Correlaciones</button>
+      </div>
+
+      <!-- TAB: RESUMEN -->
+      <div id="tab-resumen">
+        <div id="empty-resumen" class="card empty">
+          <div class="empty-icon">📊</div>
+          <p>Agrega activos para ver el análisis de riesgo.</p>
+        </div>
+        <div id="content-resumen" style="display:none">
+          <div class="metrics-grid" id="metrics-grid"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+            <div class="card">
+              <div class="card-title">Distribución del portafolio</div>
+              <div class="chart-wrap" style="height:180px">
+                <canvas id="allocChart" role="img" aria-label="Distribución del portafolio por activo">Distribución del portafolio.</canvas>
+              </div>
+              <div class="legend" id="alloc-legend"></div>
+            </div>
+            <div class="card">
+              <div class="card-title">Contribución al riesgo</div>
+              <div class="chart-wrap" style="height:180px">
+                <canvas id="riskChart" role="img" aria-label="Contribución al riesgo de cada activo">Contribución al riesgo por activo.</canvas>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Detalle por activo</div>
+            <div class="tbl-wrap">
+              <table>
+                <thead><tr>
+                  <th>Ticker</th><th>Clase</th><th>Peso</th><th>Valor</th>
+                  <th>YTD</th><th>Volatilidad</th><th>VaR 95% 1d</th><th>Riesgo</th>
+                </tr></thead>
+                <tbody id="detail-table"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: STRESS -->
+      <div id="tab-stress" style="display:none">
+        <div class="card">
+          <div class="card-title">Simulador de escenarios de estrés</div>
+          <div class="slider-row">
+            <span class="slider-lbl">Crisis de mercados</span>
+            <input type="range" min="-60" max="0" value="-25" id="sl-crisis" step="1" oninput="updateStress()">
+            <span class="slider-val" id="sv-crisis">-25%</span>
+          </div>
+          <div class="slider-row">
+            <span class="slider-lbl">Subida de tasas</span>
+            <input type="range" min="0" max="600" value="200" id="sl-rates" step="10" oninput="updateStress()">
+            <span class="slider-val" id="sv-rates">+200 bps</span>
+          </div>
+          <div class="slider-row">
+            <span class="slider-lbl">Caída de cripto</span>
+            <input type="range" min="-90" max="0" value="-50" id="sl-crypto" step="5" oninput="updateStress()">
+            <span class="slider-val" id="sv-crypto">-50%</span>
+          </div>
+          <div class="slider-row">
+            <span class="slider-lbl">Inflación</span>
+            <input type="range" min="0" max="20" value="5" id="sl-inf" step="1" oninput="updateStress()">
+            <span class="slider-val" id="sv-inf">5%</span>
+          </div>
+          <div class="stress-result">
+            <p style="font-size:12px;color:var(--text2);margin-bottom:4px">Impacto estimado en el portafolio</p>
+            <div style="font-size:26px;font-weight:700" id="stress-total">—</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:4px" id="stress-pct"></div>
+            <hr>
+            <div class="stress-breakdown" id="stress-breakdown"></div>
+          </div>
+        </div>
+        <div class="gap"></div>
+        <div class="card">
+          <div class="card-title">Comparativa — crisis históricas</div>
+          <div class="chart-wrap" style="height:220px">
+            <canvas id="scenarioChart" role="img" aria-label="Impacto histórico en el portafolio bajo distintos escenarios">Escenarios históricos de impacto.</canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: CORRELACION -->
+      <div id="tab-correlacion" style="display:none">
+        <div class="card">
+          <div class="card-title">Matriz de correlaciones estimada</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:1rem">Basada en correlaciones históricas típicas por clase de activo. Los valores reales dependen del período de análisis.</p>
+          <div id="corr-matrix"></div>
+        </div>
+        <div class="gap"></div>
+        <div class="card">
+          <div class="card-title">Peso vs contribución al riesgo</div>
+          <div class="chart-wrap" style="height:200px">
+            <canvas id="riskContrib2" role="img" aria-label="Comparación entre peso y contribución al riesgo de cada activo">Peso vs riesgo.</canvas>
+          </div>
+          <div style="display:flex;gap:16px;margin-top:.75rem;font-size:11px;color:var(--text2)">
+            <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:2px;background:rgba(55,138,221,0.6)"></span>Peso en portafolio %</span>
+            <span style="display:flex;align-items:center;gap:4px"><span style="width:9px;height:9px;border-radius:2px;background:rgba(216,90,48,0.6)"></span>Contribución al riesgo %</span>
+          </div>
+        </div>
+      </div>
+
+
+  </div>
+</div>
+
+<script>
+const COLORS = ['#378ADD','#1D9E75','#D85A30','#7F77DD','#EF9F27','#D4537E','#639922','#E24B4A','#5DCAA5','#BA7517','#534AB7','#0F6E56'];
+
+const PRESETS = {
+
+  /* 1 ── Conservador: jubilación / capital preservación */
+  conservador: [
+    {ticker:'AGG',  name:'Bonos Agregados EE.UU.',  cls:'Renta Fija',  w:35, ytd:-1.2, vol:5.8},
+    {ticker:'TLT',  name:'Bonos Tesoro 20+ años',   cls:'Renta Fija',  w:20, ytd:-3.1, vol:14.2},
+    {ticker:'SPY',  name:'S&P 500 ETF',             cls:'ETF',         w:20, ytd:8.7,  vol:15.2},
+    {ticker:'GLD',  name:'Oro ETF (SPDR)',           cls:'Commodities', w:15, ytd:5.3,  vol:12.9},
+    {ticker:'VNQ',  name:'Real Estate ETF',          cls:'ETF',         w:10, ytd:3.1,  vol:18.4}
+  ],
+
+  /* 2 ── Moderado: crecimiento balanceado */
+  moderado: [
+    {ticker:'SPY',  name:'S&P 500 ETF',             cls:'ETF',         w:30, ytd:8.7,  vol:15.2},
+    {ticker:'QQQ',  name:'Nasdaq 100 ETF',          cls:'ETF',         w:20, ytd:14.1, vol:19.8},
+    {ticker:'AGG',  name:'Bonos Agregados',         cls:'Renta Fija',  w:20, ytd:-1.2, vol:5.8},
+    {ticker:'GLD',  name:'Oro ETF',                 cls:'Commodities', w:10, ytd:5.3,  vol:12.9},
+    {ticker:'EEM',  name:'Mercados Emergentes ETF', cls:'ETF',         w:10, ytd:6.2,  vol:22.1},
+    {ticker:'BTC',  name:'Bitcoin',                 cls:'Cripto',      w:10, ytd:32.5, vol:68.4}
+  ],
+
+  /* 3 ── Tecnología IA: concentrado en el boom de inteligencia artificial */
+  tecnologia_ia: [
+    {ticker:'NVDA', name:'NVIDIA Corp.',            cls:'Acciones', w:22, ytd:68.3, vol:48.2},
+    {ticker:'MSFT', name:'Microsoft Corp.',         cls:'Acciones', w:18, ytd:18.4, vol:21.3},
+    {ticker:'GOOGL',name:'Alphabet (Google)',        cls:'Acciones', w:15, ytd:22.7, vol:26.8},
+    {ticker:'META', name:'Meta Platforms',          cls:'Acciones', w:13, ytd:38.5, vol:34.1},
+    {ticker:'AMZN', name:'Amazon.com',              cls:'Acciones', w:12, ytd:16.9, vol:28.4},
+    {ticker:'QQQ',  name:'Nasdaq 100 ETF',          cls:'ETF',      w:12, ytd:14.1, vol:19.8},
+    {ticker:'PLTR', name:'Palantir Technologies',   cls:'Acciones', w:8,  ytd:92.4, vol:72.5}
+  ],
+
+  /* 4 ── Cripto diversificado: ecosistema blockchain completo */
+  cripto: [
+    {ticker:'BTC',  name:'Bitcoin',                 cls:'Cripto', w:35, ytd:32.5, vol:68.4},
+    {ticker:'ETH',  name:'Ethereum',                cls:'Cripto', w:25, ytd:18.9, vol:72.1},
+    {ticker:'SOL',  name:'Solana',                  cls:'Cripto', w:15, ytd:45.2, vol:95.3},
+    {ticker:'BNB',  name:'Binance Coin',            cls:'Cripto', w:10, ytd:24.1, vol:62.8},
+    {ticker:'AVAX', name:'Avalanche',               cls:'Cripto', w:8,  ytd:28.7, vol:88.4},
+    {ticker:'LINK', name:'Chainlink',               cls:'Cripto', w:7,  ytd:35.6, vol:82.1}
+  ],
+
+  /* 5 ── Global macro: cobertura contra la inflación y dólar */
+  macro_global: [
+    {ticker:'GLD',  name:'Oro ETF (SPDR)',          cls:'Commodities', w:20, ytd:5.3,  vol:12.9},
+    {ticker:'SLV',  name:'Plata ETF (iShares)',     cls:'Commodities', w:10, ytd:8.1,  vol:24.6},
+    {ticker:'USO',  name:'Petróleo ETF (WTI)',      cls:'Commodities', w:10, ytd:-4.2, vol:32.8},
+    {ticker:'EEM',  name:'Mercados Emergentes ETF', cls:'ETF',         w:15, ytd:6.2,  vol:22.1},
+    {ticker:'FXI',  name:'China Large Cap ETF',     cls:'ETF',         w:10, ytd:-8.3, vol:28.9},
+    {ticker:'EWJ',  name:'Japón ETF (iShares)',     cls:'ETF',         w:10, ytd:12.4, vol:17.3},
+    {ticker:'TIP',  name:'TIPS Bonos Inflación',    cls:'Renta Fija',  w:15, ytd:1.8,  vol:7.2},
+    {ticker:'BTC',  name:'Bitcoin (reserva valor)', cls:'Cripto',      w:10, ytd:32.5, vol:68.4}
+  ],
+
+  /* 6 ── Alto riesgo / alto retorno: para perfil especulativo */
+  especulativo: [
+    {ticker:'TSLA', name:'Tesla Inc.',              cls:'Acciones', w:18, ytd:22.1, vol:55.3},
+    {ticker:'NVDA', name:'NVIDIA Corp.',            cls:'Acciones', w:15, ytd:68.3, vol:48.2},
+    {ticker:'COIN', name:'Coinbase Global',         cls:'Acciones', w:10, ytd:48.7, vol:82.4},
+    {ticker:'MSTR', name:'MicroStrategy',           cls:'Acciones', w:8,  ytd:95.2, vol:98.7},
+    {ticker:'ARKK', name:'ARK Innovation ETF',      cls:'ETF',      w:10, ytd:12.8, vol:52.6},
+    {ticker:'BTC',  name:'Bitcoin',                 cls:'Cripto',   w:18, ytd:32.5, vol:68.4},
+    {ticker:'SOL',  name:'Solana',                  cls:'Cripto',   w:12, ytd:45.2, vol:95.3},
+    {ticker:'DOGE', name:'Dogecoin',                cls:'Cripto',   w:9,  ytd:58.3, vol:115.2}
+  ]
+
+};
+
+// Correlaciones base por clase
+const CLASS_CORR = {
+  'Acciones':    {'Acciones':0.75, 'ETF':0.80, 'Cripto':0.30, 'Renta Fija':-0.25, 'Commodities':0.10, 'FX':0.05, 'Otro':0.30},
+  'ETF':         {'Acciones':0.80, 'ETF':0.85, 'Cripto':0.32, 'Renta Fija':-0.28, 'Commodities':0.15, 'FX':0.05, 'Otro':0.35},
+  'Cripto':      {'Acciones':0.30, 'ETF':0.32, 'Cripto':0.65, 'Renta Fija':-0.10, 'Commodities':0.18, 'FX':0.08, 'Otro':0.20},
+  'Renta Fija':  {'Acciones':-0.25,'ETF':-0.28,'Cripto':-0.10,'Renta Fija':0.80,  'Commodities':0.05, 'FX':0.12, 'Otro':-0.10},
+  'Commodities': {'Acciones':0.10, 'ETF':0.15, 'Cripto':0.18, 'Renta Fija':0.05,  'Commodities':0.70, 'FX':0.20, 'Otro':0.15},
+  'FX':          {'Acciones':0.05, 'ETF':0.05, 'Cripto':0.08, 'Renta Fija':0.12,  'Commodities':0.20, 'FX':0.60, 'Otro':0.10},
+  'Otro':        {'Acciones':0.30, 'ETF':0.35, 'Cripto':0.20, 'Renta Fija':-0.10, 'Commodities':0.15, 'FX':0.10, 'Otro':0.60}
+};
+
+let portfolio = [];
+
+let chartAlloc = null, chartRisk = null, chartRisk2 = null, chartScenario = null;
+
+// --- PORTFOLIO ---
+function loadPreset(key) { portfolio = PRESETS[key].map(a=>({...a})); renderTable(); recalc(); }
+function clearAll() { portfolio = []; renderTable(); recalc(); }
+function totalValue() { return +document.getElementById('total-input').value || 100000; }
+
+function addAsset() {
+  const ticker = document.getElementById('in-ticker').value.trim().toUpperCase();
+  if (!ticker) { document.getElementById('in-ticker').focus(); return; }
+  const name   = document.getElementById('in-name').value.trim() || ticker;
+  const cls    = document.getElementById('in-class').value;
+  const w      = parseFloat(document.getElementById('in-weight').value) || 0;
+  const ytd    = parseFloat(document.getElementById('in-ytd').value) || 0;
+  const vol    = parseFloat(document.getElementById('in-vol').value) || 15;
+  portfolio.push({ticker, name, cls, w, ytd, vol});
+  ['in-ticker','in-name','in-weight','in-ytd','in-vol'].forEach(id => document.getElementById(id).value = '');
+  renderTable(); recalc();
+}
+
+function removeAsset(i) { portfolio.splice(i,1); renderTable(); recalc(); }
+
+function riskLabel(vol) {
+  if (vol < 12) return '<span class="badge b-low">Baja</span>';
+  if (vol < 30) return '<span class="badge b-med">Media</span>';
+  return '<span class="badge b-high">Alta</span>';
+}
+
+function checkWeights() {
+  const sum = portfolio.reduce((s,a) => s+a.w, 0);
+  const el  = document.getElementById('weight-alert');
+  if (!portfolio.length) { el.style.display='none'; return; }
+  const diff = Math.round((sum - 100) * 10) / 10;
+  if (Math.abs(diff) < 0.1) { el.style.display='none'; return; }
+  el.style.display = 'block';
+  el.className = 'alert ' + (diff > 0 ? 'alert-err' : 'alert-warn');
+  el.textContent = diff > 0
+    ? `⚠ Los pesos suman ${sum.toFixed(1)}% — exceden 100% en ${diff.toFixed(1)}%`
+    : `⚠ Los pesos suman ${sum.toFixed(1)}% — faltan ${Math.abs(diff).toFixed(1)}% para llegar a 100%`;
+}
+
+function renderTable() {
+  checkWeights();
+  const body = document.getElementById('assets-body');
+  if (!portfolio.length) {
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:1.5rem;color:var(--text2);font-size:13px">No hay activos. Agrega uno con el formulario o carga un preset.</td></tr>';
+    return;
+  }
+  const total = totalValue();
+  body.innerHTML = portfolio.map((a,i) => `
+    <tr>
+      <td style="font-weight:600">${a.ticker}</td>
+      <td style="color:var(--text2);font-size:12px">${a.name}</td>
+      <td style="font-size:12px">${a.cls}</td>
+      <td>
+        <span class="wbar-wrap"><span class="wbar" style="width:${Math.min(a.w,100)}%;background:${COLORS[i%COLORS.length]}"></span></span>
+        ${a.w.toFixed(1)}%
+      </td>
+      <td class="${a.ytd>=0?'up':'dn'}">${a.ytd>=0?'+':''}${a.ytd.toFixed(1)}%</td>
+      <td>${a.vol.toFixed(1)}%</td>
+      <td>${riskLabel(a.vol)}</td>
+      <td><button class="btn btn-icon btn-danger" onclick="removeAsset(${i})" title="Eliminar">✕</button></td>
+    </tr>
+  `).join('');
+}
+
+// --- METRICS ---
+function calcMetrics() {
+  if (!portfolio.length) return null;
+  const total = totalValue();
+  const portVol = Math.sqrt(portfolio.reduce((s,a) => s + Math.pow(a.w/100 * a.vol/100, 2), 0)) * 100;
+  const portReturn = portfolio.reduce((s,a) => s + a.w/100 * a.ytd, 0);
+  const varPct = portVol / 100 * 1.645 / Math.sqrt(252);
+  const varAbs = total * varPct;
+  const rf = 4.5;
+  const sharpe = portVol > 0 ? (portReturn - rf) / portVol : 0;
+  const beta = portfolio.reduce((s,a) => {
+    const b = {Acciones:1.1,ETF:1.0,Cripto:1.5,FX:0.3,'Renta Fija':0.1,Commodities:0.4,Otro:0.8}[a.cls]||1;
+    return s + a.w/100 * b;
+  }, 0);
+  return { total, portVol, portReturn, varPct, varAbs, sharpe, beta };
+}
+
+function buildResumen() {
+  const m = calcMetrics();
+  const empty   = document.getElementById('empty-resumen');
+  const content = document.getElementById('content-resumen');
+  if (!m) { empty.style.display='block'; content.style.display='none'; return; }
+  empty.style.display = 'none';
+  content.style.display = 'block';
+
+  document.getElementById('metrics-grid').innerHTML = `
+    <div class="metric"><div class="metric-lbl">VaR 95% (1 día)</div>
+      <div class="metric-val dn">-$${Math.round(m.varAbs).toLocaleString('en-US')}</div>
+      <div class="metric-sub dn">${(m.varPct*100).toFixed(2)}% del portafolio</div></div>
+    <div class="metric"><div class="metric-lbl">Volatilidad anual</div>
+      <div class="metric-val">${m.portVol.toFixed(1)}%</div>
+      <div class="metric-sub">ponderada del portafolio</div></div>
+    <div class="metric"><div class="metric-lbl">Sharpe Ratio</div>
+      <div class="metric-val ${m.sharpe>=1?'up':m.sharpe>=0?'':'dn'}">${m.sharpe.toFixed(2)}</div>
+      <div class="metric-sub">${m.sharpe>=1.5?'Excelente':m.sharpe>=1?'Bueno':m.sharpe>=0?'Aceptable':'Negativo'}</div></div>
+    <div class="metric"><div class="metric-lbl">Retorno YTD est.</div>
+      <div class="metric-val ${m.portReturn>=0?'up':'dn'}">${m.portReturn>=0?'+':''}${m.portReturn.toFixed(1)}%</div>
+      <div class="metric-sub ${m.portReturn>=0?'up':'dn'}">$${(m.portReturn>=0?'+':'')}${Math.round(m.total*m.portReturn/100).toLocaleString('en-US')}</div></div>
+    <div class="metric"><div class="metric-lbl">Beta estimado</div>
+      <div class="metric-val">${m.beta.toFixed(2)}</div>
+      <div class="metric-sub">${m.beta>1.2?'Alta sensibilidad':m.beta>0.8?'Neutro':'Defensivo'}</div></div>
+    <div class="metric"><div class="metric-lbl">N° de activos</div>
+      <div class="metric-val">${portfolio.length}</div>
+      <div class="metric-sub">${portfolio.length<4?'Poca diversificación':portfolio.length<8?'Diversificado':'Muy diversificado'}</div></div>
+  `;
+  document.getElementById('metrics-grid').style.gridTemplateColumns = 'repeat(3,1fr)';
+
+  const labels = portfolio.map(a=>a.ticker);
+  const weights = portfolio.map(a=>a.w);
+  const totalRiskScore = portfolio.reduce((s,a)=>s+a.w/100*a.vol,0);
+  const riskC = portfolio.map(a=>+((a.w/100*a.vol)/totalRiskScore*100).toFixed(1));
+
+  if (chartAlloc) chartAlloc.destroy();
+  chartAlloc = new Chart(document.getElementById('allocChart'), {
+    type:'doughnut',
+    data:{ labels, datasets:[{data:weights, backgroundColor:COLORS.slice(0,labels.length), borderWidth:0, hoverOffset:4}] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, cutout:'62%' }
+  });
+  document.getElementById('alloc-legend').innerHTML = portfolio.map((a,i)=>
+    `<span style="display:flex;align-items:center;gap:4px"><span class="legend-dot" style="background:${COLORS[i%COLORS.length]}"></span>${a.ticker} ${a.w.toFixed(1)}%</span>`
+  ).join('');
+
+  if (chartRisk) chartRisk.destroy();
+  chartRisk = new Chart(document.getElementById('riskChart'), {
+    type:'bar',
+    data:{ labels, datasets:[{data:riskC, backgroundColor:COLORS.slice(0,labels.length), borderWidth:0}] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{ x:{ticks:{font:{size:10}},grid:{display:false}}, y:{ticks:{font:{size:10},callback:v=>v+'%'},grid:{color:'rgba(128,128,128,.1)'}} }
+    }
+  });
+
+  // Detail table
+  const total = totalValue();
+  document.getElementById('detail-table').innerHTML = portfolio.map(a => {
+    const varA = total * a.w/100 * (a.vol/100) * 1.645 / Math.sqrt(252);
+    return `<tr>
+      <td style="font-weight:600">${a.ticker}</td>
+      <td style="font-size:12px">${a.cls}</td>
+      <td>${a.w.toFixed(1)}%</td>
+      <td>$${Math.round(total*a.w/100).toLocaleString('en-US')}</td>
+      <td class="${a.ytd>=0?'up':'dn'}">${a.ytd>=0?'+':''}${a.ytd.toFixed(1)}%</td>
+      <td>${a.vol.toFixed(1)}%</td>
+      <td class="dn">-$${Math.round(varA).toLocaleString('en-US')}</td>
+      <td>${riskLabel(a.vol)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// --- STRESS ---
+function updateStress() {
+  const crisis = +document.getElementById('sl-crisis').value;
+  const rates  = +document.getElementById('sl-rates').value;
+  const crypto = +document.getElementById('sl-crypto').value;
+  const inf    = +document.getElementById('sl-inf').value;
+  document.getElementById('sv-crisis').textContent = crisis + '%';
+  document.getElementById('sv-rates').textContent  = '+' + rates + ' bps';
+  document.getElementById('sv-crypto').textContent = crypto + '%';
+  document.getElementById('sv-inf').textContent    = inf + '%';
+
+  if (!portfolio.length) {
+    document.getElementById('stress-total').textContent = '—';
+    document.getElementById('stress-pct').textContent = 'Agrega activos para simular';
+    document.getElementById('stress-breakdown').innerHTML = '';
+    return;
+  }
+  const total = totalValue();
+  const shockMap = { Acciones:crisis/100, ETF:crisis/100*0.9, Cripto:crypto/100, 'Renta Fija':-(rates/100)*0.05, Commodities:-(inf/100)*0.2, FX:-(rates/100)*0.02, Otro:crisis/100*0.5 };
+
+  const impacts = portfolio.map(a => ({
+    ticker: a.ticker,
+    impact: total * a.w/100 * (shockMap[a.cls] || crisis/100 * 0.5)
+  }));
+  const totalImpact = impacts.reduce((s,x)=>s+x.impact,0);
+  const pct = (totalImpact/total*100).toFixed(1);
+
+  document.getElementById('stress-total').textContent = (totalImpact<0?'-':'+')+' $'+Math.abs(Math.round(totalImpact)).toLocaleString('en-US');
+  document.getElementById('stress-total').className = totalImpact < 0 ? 'dn' : 'up';
+  document.getElementById('stress-total').style.cssText = 'font-size:26px;font-weight:700';
+  document.getElementById('stress-pct').textContent = pct+'% del valor total del portafolio';
+
+  const cols = Math.min(impacts.length, 5);
+  document.getElementById('stress-breakdown').style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  document.getElementById('stress-breakdown').innerHTML = impacts.map(x=>`
+    <div style="text-align:center">
+      <div style="font-weight:600;font-size:12px">${x.ticker}</div>
+      <div style="font-size:11px" class="${x.impact<0?'dn':'up'}">${x.impact<0?'-':'+'}$${Math.abs(Math.round(x.impact)).toLocaleString('en-US')}</div>
+    </div>
+  `).join('');
+}
+
+function buildScenarioChart() {
+  if (chartScenario) chartScenario.destroy();
+  const total = totalValue();
+  const scenarios = [
+    { label:'Crisis 2008', shocks:{Acciones:-0.37,ETF:-0.33,Cripto:-0.60,'Renta Fija':0.05,Commodities:-0.15,FX:-0.05,Otro:-0.25} },
+    { label:'COVID 2020',  shocks:{Acciones:-0.22,ETF:-0.20,Cripto:-0.40,'Renta Fija':0.04,Commodities:-0.25,FX:-0.03,Otro:-0.15} },
+    { label:'Inflación 2022',shocks:{Acciones:-0.18,ETF:-0.16,Cripto:-0.65,'Renta Fija':-0.13,Commodities:0.20,FX:0.02,Otro:-0.12} },
+    { label:'Cripto 2022', shocks:{Acciones:-0.05,ETF:-0.04,Cripto:-0.75,'Renta Fija':0.02,Commodities:-0.02,FX:0.01,Otro:-0.03} }
+  ];
+  const data = scenarios.map(sc => {
+    if (!portfolio.length) return 0;
+    return portfolio.reduce((s,a) => s + total*a.w/100*(sc.shocks[a.cls]||sc.shocks['Otro']), 0);
+  });
+  chartScenario = new Chart(document.getElementById('scenarioChart'), {
+    type:'bar',
+    data:{ labels:scenarios.map(s=>s.label), datasets:[{
+      label:'Impacto ($)', data,
+      backgroundColor:['rgba(224,75,74,.5)','rgba(239,159,39,.5)','rgba(127,119,221,.5)','rgba(216,90,48,.5)'],
+      borderColor:['#E24B4A','#EF9F27','#7F77DD','#D85A30'], borderWidth:1
+    }]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{ x:{ticks:{font:{size:11}},grid:{display:false}}, y:{ticks:{font:{size:10},callback:v=>'$'+Math.round(v/1000)+'k'},grid:{color:'rgba(128,128,128,.1)'}} }
+    }
+  });
+}
+
+// --- CORRELATIONS ---
+function buildCorr() {
+  if (!portfolio.length) { document.getElementById('corr-matrix').innerHTML='<p style="color:var(--text2);font-size:13px">Agrega activos para ver correlaciones.</p>'; return; }
+  const tickers = portfolio.map(a=>a.ticker);
+  const matrix  = portfolio.map(a => portfolio.map(b => a===b ? 1.0 : (CLASS_CORR[a.cls]?.[b.cls] ?? 0.2)));
+
+  function corrBg(v) {
+    if (v === 1)   return '#E6F1FB';
+    if (v > 0.6)  return '#85B7EB';
+    if (v > 0.2)  return '#B5D4F4';
+    if (v > -0.1) return '#F1EFE8';
+    if (v > -0.3) return '#F5C4B3';
+    return '#F09595';
+  }
+  function corrTc(v) { return Math.abs(v)>0.5 ? '#042C53' : 'var(--text)'; }
+
+  const cols = tickers.length + 1;
+  let html = `<div class="corr-grid" style="grid-template-columns:60px repeat(${tickers.length},1fr)">`;
+  html += '<div></div>';
+  tickers.forEach(t => { html += `<div style="text-align:center;font-size:11px;font-weight:600;padding:4px;color:var(--text2)">${t}</div>`; });
+  matrix.forEach((row,i) => {
+    html += `<div style="font-size:11px;font-weight:600;display:flex;align-items:center;color:var(--text2);padding-right:4px">${tickers[i]}</div>`;
+    row.forEach(v => {
+      html += `<div class="corr-cell" style="background:${corrBg(v)};color:${corrTc(v)}">${v.toFixed(2)}</div>`;
+    });
+  });
+  html += '</div>';
+  document.getElementById('corr-matrix').innerHTML = html;
+
+  if (chartRisk2) chartRisk2.destroy();
+  const totalRS = portfolio.reduce((s,a)=>s+a.w/100*a.vol,0);
+  chartRisk2 = new Chart(document.getElementById('riskContrib2'), {
+    type:'bar',
+    data:{ labels:tickers, datasets:[
+      {label:'Peso %',      data:portfolio.map(a=>a.w),                                  backgroundColor:'rgba(55,138,221,.5)', borderColor:'#378ADD', borderWidth:1},
+      {label:'Riesgo %',   data:portfolio.map(a=>+((a.w/100*a.vol/totalRS*100).toFixed(1))), backgroundColor:'rgba(216,90,48,.5)', borderColor:'#D85A30', borderWidth:1}
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{ x:{ticks:{font:{size:11}},grid:{display:false}}, y:{ticks:{font:{size:10},callback:v=>v+'%'},grid:{color:'rgba(128,128,128,.1)'}} }
+    }
+  });
+}
+
+// --- TABS ---
+function switchTab(name) {
+  ['resumen','stress','correlacion'].forEach(t => {
+    document.getElementById('tab-'+t).style.display = t===name ? 'block' : 'none';
+  });
+  document.querySelectorAll('.tab').forEach((b,i) => {
+    b.classList.toggle('active', ['resumen','stress','correlacion'][i]===name);
+  });
+  if (name==='resumen')    buildResumen();
+  if (name==='stress')     { buildScenarioChart(); updateStress(); }
+  if (name==='correlacion') buildCorr();
+}
+
+let recalcTimer = null;
+function recalc() {
+  clearTimeout(recalcTimer);
+  recalcTimer = setTimeout(() => {
+    const active = document.querySelector('.tab.active');
+    if (!active) return;
+    const idx = [...document.querySelectorAll('.tab')].indexOf(active);
+    const names = ['resumen','stress','correlacion','ia'];
+    switchTab(names[idx]);
+  }, 200);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadPreset('tecnologia_ia');
+});
+</script>
+</body>
+</html>
